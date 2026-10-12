@@ -6,7 +6,12 @@ from app.database import get_db
 from app.models import User
 from app.security import decode_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/auth/token"
+)
+
+
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_error = HTTPException(

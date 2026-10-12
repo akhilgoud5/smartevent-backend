@@ -2,6 +2,9 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -28,8 +31,10 @@ class Event(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     bookings = relationship("Booking", back_populates="event")
 
+
 class Booking(Base):
     __tablename__ = "bookings"
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
@@ -37,9 +42,16 @@ class Booking(Base):
     total_price = Column(Float, nullable=False)
     booking_status = Column(String(20), default="CONFIRMED")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    coupon_id = Column(Integer, ForeignKey("coupons.id"), nullable=True)
+    discount_amount = Column(Float, default=0.0)
+    final_amount = Column(Float, nullable=True)
+
     user = relationship("User", back_populates="bookings")
     event = relationship("Event", back_populates="bookings")
     ticket = relationship("Ticket", back_populates="booking", uselist=False)
+
+
 
 class Ticket(Base):
     __tablename__ = "tickets"
@@ -60,3 +72,51 @@ class Notification(Base):
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     user = relationship("User", back_populates="notifications")
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    booking_id = Column(
+        Integer,
+        ForeignKey("bookings.id"),
+        nullable=False,
+        index=True
+    )
+
+    payment_method = Column(String, default="SIMULATED")
+    payment_status = Column(String, default="PENDING")
+    transaction_id = Column(String, unique=True, nullable=True)
+    amount = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    booking = relationship("Booking")
+
+    
+class Coupon(Base):
+    __tablename__ = "coupons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    coupon_code = Column(String, unique=True, index=True, nullable=False)
+    discount_type = Column(String, nullable=False)
+    discount_value = Column(Float, nullable=False)
+    minimum_booking_amount = Column(Float, default=0.0)
+    expiry_date = Column(DateTime, nullable=True)
+    usage_limit = Column(Integer, nullable=True)
+    usage_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    rating = Column(Integer, nullable=False)
+    review_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    event = relationship("Event")
