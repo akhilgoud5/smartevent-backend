@@ -197,6 +197,7 @@ def sort_events(
 
     return query.all()
 
+
 @router.get("/recommendations/me", response_model=list[EventOut])
 def recommend_events(
     db: Session = Depends(get_db),
@@ -216,7 +217,7 @@ def recommend_events(
 
     preferred_categories = [row[0] for row in categories]
 
-    # Recommend upcoming events the user has not already booked.
+    # Find events already booked by this user.
     booked_event_ids = (
         db.query(Booking.event_id)
         .filter(
@@ -226,18 +227,34 @@ def recommend_events(
         .subquery()
     )
 
+    # Find upcoming events with available tickets.
     query = db.query(Event).filter(
         Event.event_date >= datetime.utcnow(),
         Event.available_tickets > 0,
         ~Event.id.in_(booked_event_ids)
     )
 
+    # Prioritize categories the user has booked before.
     if preferred_categories:
-        query = query.filter(
-            Event.category.in_(preferred_categories)
+        matching_events = (
+            query.filter(
+                Event.category.in_(preferred_categories)
+            )
+            .order_by(Event.event_date.asc())
+            .limit(10)
+            .all()
         )
 
-    return query.order_by(Event.event_date.asc()).limit(10).all()
+        if matching_events:
+            return matching_events
+
+    # Fallback for users with no matching category.
+    return (
+        query.order_by(Event.event_date.asc())
+        .limit(10)
+        .all()
+    )
+
 
 
 @router.get("/trending", response_model=list[EventOut])
