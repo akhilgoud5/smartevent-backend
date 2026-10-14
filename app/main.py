@@ -9,6 +9,7 @@ from app.routers import reviews
 from app.websocket_manager import manager
 from app.routers import wishlist
 from app.routers import event_updates
+from app.routers import analytics
 
 Base.metadata.create_all(bind=engine)
 
@@ -25,6 +26,7 @@ app.include_router(coupons.router)
 app.include_router(reviews.router)
 app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 app.include_router(event_updates.router,prefix="/event-updates",tags=["Event Updates"])
+app.include_router(analytics.router)
 
 @app.get("/")
 def root():
