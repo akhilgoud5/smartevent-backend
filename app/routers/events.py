@@ -6,6 +6,10 @@ from app.database import get_db
 from app.models import Event
 from datetime import datetime
 
+from sqlalchemy import func
+from app.models import Event, Booking, User
+from app.dependencies import get_current_user
+
 from app.schemas import EventCreate, EventOut
 
 router = APIRouter()
@@ -192,6 +196,82 @@ def sort_events(
         query = db.query(Event).order_by(sort_column.asc())
 
     return query.all()
+
+@router.get("/recommendations/me", response_model=list[EventOut])
+def recommend_events(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    # Find categories from the user's confirmed bookings.
+    categories = (
+        db.query(Event.category)
+        .join(Booking, Booking.event_id == Event.id)
+        .filter(
+            Booking.user_id == user.id,
+            Booking.booking_status == "CONFIRMED"
+        )
+        .distinct()
+        .all()
+    )
+
+    preferred_categories = [row[0] for row in categories]
+
+    # Recommend upcoming events the user has not already booked.
+    booked_event_ids = (
+        db.query(Booking.event_id)
+        .filter(
+            Booking.user_id == user.id,
+            Booking.booking_status == "CONFIRMED"
+        )
+        .subquery()
+    )
+
+    query = db.query(Event).filter(
+        Event.event_date >= datetime.utcnow(),
+        Event.available_tickets > 0,
+        ~Event.id.in_(booked_event_ids)
+    )
+
+    if preferred_categories:
+        query = query.filter(
+            Event.category.in_(preferred_categories)
+        )
+
+    return query.order_by(Event.event_date.asc()).limit(10).all()
+
+
+@router.get("/trending", response_model=list[EventOut])
+def trending_events(
+    db: Session = Depends(get_db)
+):
+    # Rank events by confirmed ticket bookings.
+    booking_counts = (
+        db.query(
+            Booking.event_id.label("event_id"),
+            func.sum(Booking.ticket_quantity).label("tickets_sold")
+        )
+        .filter(Booking.booking_status == "CONFIRMED")
+        .group_by(Booking.event_id)
+        .subquery()
+    )
+
+    return (
+        db.query(Event)
+        .outerjoin(
+            booking_counts,
+            Event.id == booking_counts.c.event_id
+        )
+        .filter(
+            Event.event_date >= datetime.utcnow(),
+            Event.available_tickets > 0
+        )
+        .order_by(
+            booking_counts.c.tickets_sold.desc().nullslast(),
+            Event.event_date.asc()
+        )
+        .limit(10)
+        .all()
+    )
 
 
 @router.get("/{event_id}", response_model=EventOut)
