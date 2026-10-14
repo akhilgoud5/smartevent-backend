@@ -12,6 +12,7 @@ class User(Base):
     username = Column(String(100), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
+    role = Column(String(20), default="USER", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     bookings = relationship("Booking", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
@@ -28,6 +29,7 @@ class Event(Base):
     banner_image = Column(String(500), nullable=True)
     total_tickets = Column(Integer, default=100)
     available_tickets = Column(Integer, default=100)
+    organizer_id = Column(Integer,ForeignKey("users.id"),nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     bookings = relationship("Booking", back_populates="event")
 
@@ -148,3 +150,18 @@ class Wishlist(Base):
             name="uq_wishlist_user_event"
         ),
     )
+
+class EventUpdate(Base):
+    __tablename__ = "event_updates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(
+        Integer,
+        ForeignKey("events.id"),
+        nullable=False,
+        index=True
+    )
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    event = relationship("Event")
