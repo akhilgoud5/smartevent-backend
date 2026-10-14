@@ -120,3 +120,31 @@ class Review(Base):
 
     user = relationship("User")
     event = relationship("Event")
+
+class Wishlist(Base):
+    __tablename__ = "wishlist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+    event_id = Column(
+        Integer,
+        ForeignKey("events.id"),
+        nullable=False,
+        index=True
+    )
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    event = relationship("Event")
+
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint(
+            "user_id", "event_id",
+            name="uq_wishlist_user_event"
+        ),
+    )

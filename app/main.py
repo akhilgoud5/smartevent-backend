@@ -7,7 +7,7 @@ from app.routers import payments
 from app.routers import coupons
 from app.routers import reviews
 from app.websocket_manager import manager
-
+from app.routers import wishlist
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SmartEvent API", version="1.0.0")
@@ -25,7 +25,7 @@ app.include_router(
 app.include_router(payments.router)
 app.include_router(coupons.router)
 app.include_router(reviews.router)
-
+app.include_router(wishlist.router, prefix="/wishlist", tags=["Wishlist"])
 
 @app.get("/")
 def root():
