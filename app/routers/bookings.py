@@ -149,5 +149,43 @@ def booking_history(
         .all()
     )
 
+@router.get("/stats")
+def booking_stats(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    bookings = (
+        db.query(Booking)
+        .filter(Booking.user_id == user.id)
+        .all()
+    )
+
+    confirmed = [
+        booking for booking in bookings
+        if booking.booking_status == "CONFIRMED"
+    ]
+
+    cancelled = [
+        booking for booking in bookings
+        if booking.booking_status == "CANCELLED"
+    ]
+
+    return {
+        "total_bookings": len(bookings),
+        "confirmed_bookings": len(confirmed),
+        "cancelled_bookings": len(cancelled),
+        "total_tickets_booked": sum(
+            booking.ticket_quantity for booking in confirmed
+        ),
+        "total_amount_spent": sum(
+            booking.final_amount
+            if booking.final_amount is not None
+            else booking.total_price
+            for booking in confirmed
+        )
+    }
+
+
+
 
 
