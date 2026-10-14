@@ -21,11 +21,13 @@ async def create_booking(
     user: User = Depends(get_current_user)
 ):
     if data.ticket_quantity <= 0:
-        raise HTTPException(400, "Ticket quantity must be greater than zero")
+        raise HTTPException(
+            status_code=400,
+            detail="Ticket quantity must be greater than zero"
+        )
 
     try:
-        # Atomically reserve tickets so concurrent requests
-        # cannot sell more tickets than are available.
+        # Atomically reserve only the tickets that are available.
         result = db.execute(
             update(Event)
             .where(
@@ -42,14 +44,14 @@ async def create_booking(
         if result.rowcount == 0:
             db.rollback()
 
-            event = db.query(Event).filter(
+            event_exists = db.query(Event.id).filter(
                 Event.id == data.event_id
             ).first()
 
-            if not event:
+            if not event_exists:
                 raise HTTPException(404, "Event not found")
 
-            raise HTTPException(400, "Not enough tickets available")
+            raise HTTPException(409, "Not enough tickets available")
 
         event = db.query(Event).filter(
             Event.id == data.event_id
@@ -64,7 +66,6 @@ async def create_booking(
             total_price=total,
             booking_status="CONFIRMED"
         )
-
         db.add(booking)
         db.flush()
 
@@ -83,17 +84,24 @@ async def create_booking(
 
         db.add_all([ticket, notification])
         db.commit()
-
         db.refresh(booking)
-        available = event.available_tickets
+
+        available_row = db.query(Event.available_tickets).filter(
+            Event.id == data.event_id
+        ).first()
+        available = available_row[0]
 
     except HTTPException:
-        raise
-    except Exception:
         db.rollback()
-        raise HTTPException(500, "Booking failed. Please try again.")
+        raise
+    except Exception as exc:
+        db.rollback()
+        print("BOOKING ERROR:", repr(exc))
+        raise HTTPException(
+            status_code=500,
+            detail="Booking failed. Please try again."
+        )
 
-    # Broadcast only after the database transaction succeeds.
     await manager.broadcast(
         data.event_id,
         {
@@ -125,54 +133,65 @@ async def cancel_booking(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    booking = (
-        db.query(Booking)
-        .filter(
-            Booking.id == booking_id,
-            Booking.user_id == user.id
+    try:
+        booking = (
+            db.query(Booking)
+            .filter(
+                Booking.id == booking_id,
+                Booking.user_id == user.id
+            )
+            .with_for_update()
+            .first()
         )
-        .with_for_update()
-        .first()
-    )
 
-    if not booking:
-        raise HTTPException(404, "Booking not found")
+        if not booking:
+            raise HTTPException(404, "Booking not found")
 
-    if booking.booking_status == "CANCELLED":
-        raise HTTPException(400, "Booking already cancelled")
+        if booking.booking_status == "CANCELLED":
+            raise HTTPException(400, "Booking already cancelled")
 
-    event_id = booking.event_id
-    quantity = booking.ticket_quantity
+        event_id = booking.event_id
+        quantity = booking.ticket_quantity
 
-    result = db.execute(
-        update(Event)
-        .where(Event.id == event_id)
-        .values(
-            available_tickets=(
-                Event.available_tickets + quantity
+        result = db.execute(
+            update(Event)
+            .where(
+                Event.id == event_id,
+                Event.available_tickets + quantity <= Event.total_tickets
+            )
+            .values(
+                available_tickets=Event.available_tickets + quantity
             )
         )
-    )
 
-    if result.rowcount == 0:
-        db.rollback()
-        raise HTTPException(404, "Event not found")
+        if result.rowcount == 0:
+            raise HTTPException(
+                409,
+                "Ticket availability could not be restored safely"
+            )
 
-    booking.booking_status = "CANCELLED"
-
-    try:
+        booking.booking_status = "CANCELLED"
         db.commit()
-        db.refresh(booking)
 
-        event = db.query(Event).filter(
+        available_row = db.query(Event.available_tickets).filter(
             Event.id == event_id
         ).first()
 
-        available = event.available_tickets
+        if not available_row:
+            raise HTTPException(404, "Event not found")
 
-    except Exception:
+        available = available_row[0]
+
+    except HTTPException:
         db.rollback()
-        raise HTTPException(500, "Cancellation failed. Please try again.")
+        raise
+    except Exception as exc:
+        db.rollback()
+        print("CANCELLATION ERROR:", repr(exc))
+        raise HTTPException(
+            status_code=500,
+            detail="Cancellation failed. Please try again."
+        )
 
     await manager.broadcast(
         event_id,
