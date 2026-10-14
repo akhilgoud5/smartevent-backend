@@ -309,3 +309,77 @@ def get_event(
         )
 
     return event
+
+
+@router.get("/{event_id}/availability")
+def check_event_availability(
+    event_id: int,
+    db: Session = Depends(get_db)
+):
+    event = db.query(Event).filter(
+        Event.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found"
+        )
+
+    sold_tickets = event.total_tickets - event.available_tickets
+
+    return {
+        "event_id": event.id,
+        "event_title": event.title,
+        "total_tickets": event.total_tickets,
+        "available_tickets": event.available_tickets,
+        "sold_tickets": sold_tickets
+    }
+
+
+@router.get("/availability/summary")
+def event_availability_summary(
+    db: Session = Depends(get_db)
+):
+    events = db.query(Event).all()
+
+    return {
+        "total_events": len(events),
+        "total_tickets": sum(
+            event.total_tickets for event in events
+        ),
+        "available_tickets": sum(
+            event.available_tickets for event in events
+        ),
+        "sold_tickets": sum(
+            event.total_tickets - event.available_tickets
+            for event in events
+        )
+    }
+
+
+@router.get("/categories/summary")
+def event_category_summary(
+    db: Session = Depends(get_db)
+):
+    from sqlalchemy import func
+
+    results = (
+        db.query(
+            Event.category,
+            func.count(Event.id).label("event_count")
+        )
+        .group_by(Event.category)
+        .all()
+    )
+
+    return {
+        "categories": [
+            {
+                "category": category,
+                "event_count": count
+            }
+            for category, count in results
+        ]
+    }
+
