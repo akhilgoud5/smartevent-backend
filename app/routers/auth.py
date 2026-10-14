@@ -32,6 +32,58 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
 def profile(user: User = Depends(get_current_user)):
     return user
 
+@router.put("/profile")
+def update_profile(
+    username: str | None = None,
+    email: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    # Update username if provided
+    if username is not None:
+        username = username.strip()
+
+        if not username:
+            raise HTTPException(
+                status_code=422,
+                detail="Username cannot be empty"
+            )
+
+        user.username = username
+
+    # Update email if provided
+    if email is not None:
+        email = email.strip().lower()
+
+        if not email:
+            raise HTTPException(
+                status_code=422,
+                detail="Email cannot be empty"
+            )
+
+        existing_user = (
+            db.query(User)
+            .filter(
+                User.email == email,
+                User.id != user.id
+            )
+            .first()
+        )
+
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered"
+            )
+
+        user.email = email
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
 @router.post("/token", response_model=Token)
 def login_for_swagger(
     form_data: OAuth2PasswordRequestForm = Depends(),
